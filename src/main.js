@@ -5,6 +5,7 @@ import { configured, demo, fetchDonations, subscribeDonations, donorName, money 
 
 const $ = (s) => document.querySelector(s);
 const tip = $('#tip');
+const mobile = window.matchMedia('(max-width: 820px)');
 let rows = new Map();
 
 function showTip(id, ev) {
@@ -24,7 +25,11 @@ function showTip(id, ev) {
     add('t-msg', `Reveal this section with a ${money(sec.price)} gift.`);
   }
   tip.hidden = false;
-  if (ev) {
+  if (mobile.matches) {
+    // phones: pin the card under the header, centered
+    tip.style.left = Math.max(8, (innerWidth - tip.offsetWidth) / 2) + 'px';
+    tip.style.top = 'calc(env(safe-area-inset-top, 0px) + 84px)';
+  } else if (ev) {
     const pad = 16, w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = Math.min(ev.clientX + pad, innerWidth - w - 8) + 'px';
     tip.style.top = Math.min(ev.clientY + pad, innerHeight - h - 8) + 'px';
@@ -47,8 +52,14 @@ for (const s of SECTIONS) {
   li.style.setProperty('--c', s.color);
   li.innerHTML = '<i class="sw"></i><span class="n"></span><span class="p"></span>';
   li.querySelector('.n').textContent = s.name;
-  li.addEventListener('mouseenter', () => heart.highlight(s.id));
-  li.addEventListener('mouseleave', () => { heart.highlight(null); showTip(null); });
+  li.addEventListener('mouseenter', () => { if (!mobile.matches) heart.highlight(s.id); });
+  li.addEventListener('mouseleave', () => { if (!mobile.matches) { heart.highlight(null); showTip(null); } });
+  li.addEventListener('click', () => {
+    if (!mobile.matches) return;
+    setDrawer(false);
+    heart.highlight(s.id);
+    showTip(s.id, null);
+  });
   list.append(li);
 }
 function renderStats() {
@@ -56,6 +67,8 @@ function renderStats() {
   for (const r of rows.values()) raised += Number(r.amount);
   $('#raised').textContent = money(raised);
   $('#count').textContent = `${rows.size} / ${SECTIONS.length}`;
+  $('#raised-m').textContent = money(raised);
+  $('#count-m').textContent = `${rows.size} / ${SECTIONS.length}`;
   $('#bar').style.width = `${(rows.size / SECTIONS.length) * 100}%`;
   for (const li of list.children) {
     const row = rows.get(li.dataset.id);
@@ -76,7 +89,21 @@ function apply(data, { stagger = 0.28 } = {}) {
   renderStats();
 }
 
+// ---- mobile drawer ----
+const panel = $('#panel');
+const handle = $('#handle');
+function setDrawer(open) {
+  panel.classList.toggle('open', open);
+  handle.setAttribute('aria-expanded', String(open));
+  if (open) showTip(null);
+}
+handle.addEventListener('click', () => setDrawer(!panel.classList.contains('open')));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); });
+// tapping the heart closes the drawer
+$('#stage').addEventListener('pointerdown', () => setDrawer(false));
+
 $('#replay').addEventListener('click', () => {
+  setDrawer(false);
   const ids = [...rows.keys()];
   ids.forEach((id) => heart.cover(id));
   ids.forEach((id, i) => heart.peel(id, 0.3 + i * 0.28));
@@ -97,4 +124,4 @@ $('#replay').addEventListener('click', () => {
   }
   subscribeDonations((data) => apply(data));
 })();
-document.addEventListener('pointerdown', (e) => { if (!e.target.closest('canvas, .tip')) showTip(null); });
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('canvas, .tip, .list li')) showTip(null); });

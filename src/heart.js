@@ -230,8 +230,10 @@ export function createHeart(container, { onHover, onSelect }) {
     renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
     onHover?.(id, ev);
   }
-  renderer.domElement.addEventListener('pointermove', (ev) => { if (!downAt) setHover(pick(ev), ev); });
-  renderer.domElement.addEventListener('pointerleave', () => setHover(null));
+  // Hover is mouse-only; on touch a tap selects and the tip stays until the next tap.
+  renderer.domElement.addEventListener('pointermove', (ev) => { if (!downAt && ev.pointerType === 'mouse') setHover(pick(ev), ev); });
+  renderer.domElement.addEventListener('pointerleave', (ev) => { if (ev.pointerType === 'mouse') setHover(null); });
+  renderer.domElement.addEventListener('pointercancel', () => { downAt = null; });
   renderer.domElement.addEventListener('pointerdown', (ev) => { downAt = [ev.clientX, ev.clientY]; });
   renderer.domElement.addEventListener('pointerup', (ev) => {
     if (downAt && Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) < 6) {
@@ -249,7 +251,7 @@ export function createHeart(container, { onHover, onSelect }) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-    const d = Math.max(8.8 / (2 * tan), 6.4 / (2 * tan * camera.aspect));
+    const d = Math.max(8.8 / (2 * tan), 7.6 / (2 * tan * camera.aspect));
     camera.position.setLength(d);
     if (camera.position.lengthSq() === 0) camera.position.set(0, 0, d);
     controls.minDistance = d * 0.5;

@@ -10,11 +10,19 @@
 <body>
   <header class="top">
     <h1>Mosaic Heart</h1>
-    <p class="sub">Every gift peels back a piece of the heart. Drag to turn it.</p>
+    <p class="sub">Every gift peels back a piece of the heart. Drag to turn it, tap a section to see its donor.</p>
   </header>
   <main class="layout">
     <section class="stage" id="stage" aria-label="3D heart"></section>
-    <aside class="panel">
+    <aside class="panel" id="panel">
+      <button class="handle" id="handle" type="button" aria-expanded="false" aria-controls="drawer-body">
+        <span class="grip" aria-hidden="true"></span>
+        <span class="handle-row">
+          <span><b id="raised-m">$0</b> raised &middot; <b id="count-m">0 / 17</b> revealed</span>
+          <span class="chev" aria-hidden="true"></span>
+        </span>
+      </button>
+      <div class="drawer-body" id="drawer-body">
       <div class="stats">
         <div><span id="raised">$0</span><small>raised</small></div>
         <div><span id="count">0 / 17</span><small>sections revealed</small></div>
@@ -22,11 +30,13 @@
       </div>
       <button id="replay" class="ghost" type="button">&#8635; Replay reveal</button>
       <ul id="list" class="list"></ul>
+      <a class="drawer-admin" href="/admin.html">Admin login</a>
+      </div>
     </aside>
   </main>
   <div id="tip" class="tip" role="status" hidden></div>
   <div id="notice" class="notice" hidden></div>
-  <footer><a href="/admin.html">Admin login</a></footer>
+  <footer class="site-foot"><a href="/admin.html">Admin login</a></footer>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
