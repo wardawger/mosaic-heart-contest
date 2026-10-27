@@ -4,6 +4,7 @@ const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 export const configured = Boolean(url && key);
+export const demo = import.meta.env.VITE_DEMO === '1' || new URLSearchParams(location.search).has('demo');
 export const supabase = configured ? createClient(url, key) : null;
 
 export function donorName(row) {
@@ -23,7 +24,7 @@ export const DEMO_ROWS = [
 ];
 
 export async function fetchDonations() {
-  if (!configured) return new URLSearchParams(location.search).has('demo') ? DEMO_ROWS : [];
+  if (!configured) return demo ? DEMO_ROWS : [];
   const { data, error } = await supabase.from('donations').select('*');
   if (error) throw error;
   return data;

@@ -1,7 +1,7 @@
 import './style.css';
 import { SECTIONS, byId } from './sections.js';
 import { createHeart } from './heart.js';
-import { configured, fetchDonations, subscribeDonations, donorName, money } from './data.js';
+import { configured, demo, fetchDonations, subscribeDonations, donorName, money } from './data.js';
 
 const $ = (s) => document.querySelector(s);
 const tip = $('#tip');
@@ -84,7 +84,7 @@ $('#replay').addEventListener('click', () => {
 
 (async () => {
   renderStats();
-  if (!configured && !new URLSearchParams(location.search).has('demo')) {
+  if (!configured && !demo) {
     const n = $('#notice');
     n.textContent = 'Supabase is not configured yet, so no donations can be shown. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
     n.hidden = false;
