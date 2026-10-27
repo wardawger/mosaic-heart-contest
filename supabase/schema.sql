@@ -17,6 +17,12 @@ create table if not exists public.donations (
 
 alter table public.donations enable row level security;
 
+-- Table access for the site's roles (newer projects don't grant this automatically).
+-- Row-level security below still limits what each role can actually do.
+grant usage on schema public to anon, authenticated;
+grant select on public.donations to anon, authenticated;
+grant insert, update, delete on public.donations to authenticated;
+
 -- Anyone can see what has been revealed.
 drop policy if exists "public read" on public.donations;
 drop policy if exists "admin insert" on public.donations;

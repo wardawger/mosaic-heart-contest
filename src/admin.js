@@ -25,7 +25,7 @@ async function start() {
     data.session ? await renderDashboard() : renderLogin();
   } catch (e) {
     console.error(e);
-    showProblem('Could not load the admin page: ' + (e.message || e) + '. If this mentions "donations", run supabase/schema.sql in the Supabase SQL Editor.');
+    showProblem('Could not load the admin page: ' + (e.message || e) + '. Run supabase/schema.sql in the Supabase SQL Editor (role: postgres) to create the donations table and its permissions.');
   }
 }
 
