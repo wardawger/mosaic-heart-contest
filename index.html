@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mosaic Heart</title>
+  <meta name="description" content="Every gift reveals a piece of the heart. Hover a colored section to meet its donor." />
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <header class="top">
+    <h1>Mosaic Heart</h1>
+    <p class="sub">Every gift peels back a piece of the heart.</p>
+  </header>
+  <main class="layout">
+    <section class="stage" id="stage" aria-label="3D heart"></section>
+    <aside class="panel">
+      <div class="stats">
+        <div><span id="raised">$0</span><small>raised</small></div>
+        <div><span id="count">0 / 17</span><small>sections revealed</small></div>
+        <div class="bar"><i id="bar"></i></div>
+      </div>
+      <button id="replay" class="ghost" type="button">&#8635; Replay reveal</button>
+      <ul id="list" class="list"></ul>
+    </aside>
+  </main>
+  <div id="tip" class="tip" role="status" hidden></div>
+  <div id="notice" class="notice" hidden></div>
+  <footer><a href="/admin.html">Admin login</a></footer>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
