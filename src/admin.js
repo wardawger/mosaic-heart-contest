@@ -1,6 +1,6 @@
 import './style.css';
 import { SECTIONS, byId } from './sections.js';
-import { supabase, configured, fetchDonations, donorName, money } from './data.js';
+import { supabase, configured, configError, fetchDonations, donorName, money } from './data.js';
 
 const app = document.getElementById('app');
 const el = (tag, props = {}, ...kids) => {
@@ -13,14 +13,20 @@ let rows = new Map();
 
 function say(node, text, kind) { node.textContent = text; node.className = 'msg ' + (kind || ''); }
 
+function showProblem(text) {
+  app.replaceChildren(el('div', { className: 'card' }, el('h2', {}, 'Admin'), el('p', { className: 'msg err' }, text)));
+}
+
 async function start() {
-  if (!configured) {
-    app.replaceChildren(el('div', { className: 'card' }, el('h2', {}, 'Admin'),
-      el('p', {}, 'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy.')));
-    return;
+  if (!configured) return showProblem('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify, then redeploy.');
+  if (configError) return showProblem(configError);
+  try {
+    const { data } = await supabase.auth.getSession();
+    data.session ? await renderDashboard() : renderLogin();
+  } catch (e) {
+    console.error(e);
+    showProblem('Could not load the admin page: ' + (e.message || e) + '. If this mentions "donations", run supabase/schema.sql in the Supabase SQL Editor.');
   }
-  const { data } = await supabase.auth.getSession();
-  data.session ? renderDashboard() : renderLogin();
 }
 
 function renderLogin() {
@@ -37,7 +43,7 @@ function renderLogin() {
     say(msg, 'Signing in…');
     const { error } = await supabase.auth.signInWithPassword({ email: email.value.trim(), password: pass.value });
     if (error) say(msg, 'Sign-in failed: ' + error.message, 'err');
-    else renderDashboard();
+    else renderDashboard().catch((err) => say(msg, 'Signed in, but loading donations failed: ' + err.message, 'err'));
   });
   app.replaceChildren(form);
 }

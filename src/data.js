@@ -1,11 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Tolerate common copy/paste slips in the Netlify env vars: quotes, spaces,
+// a missing https://, a trailing slash or a pasted /rest/v1 path.
+const clean = (v) => (v || '').trim().replace(/^['"]|['"]$/g, '').trim();
+let url = clean(import.meta.env.VITE_SUPABASE_URL);
+if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+url = url.replace(/\/(rest\/v1\/?)?$/, '');
+const key = clean(import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 export const configured = Boolean(url && key);
 export const demo = import.meta.env.VITE_DEMO === '1' || new URLSearchParams(location.search).has('demo');
-export const supabase = configured ? createClient(url, key) : null;
+export let configError = null;
+export let supabase = null;
+if (configured) {
+  try {
+    supabase = createClient(url, key);
+  } catch (e) {
+    configError = `VITE_SUPABASE_URL looks wrong (${e.message}). It should look like https://abcd1234.supabase.co`;
+    console.error(e);
+  }
+}
 
 export function donorName(row) {
   return row.donor_type === 'organization'
@@ -24,7 +38,10 @@ export const DEMO_ROWS = [
 ];
 
 export async function fetchDonations() {
-  if (!configured) return demo ? DEMO_ROWS : [];
+  if (!supabase) {
+    if (configError) throw new Error(configError);
+    return demo ? DEMO_ROWS : [];
+  }
   const { data, error } = await supabase.from('donations').select('*');
   if (error) throw error;
   return data;
@@ -32,7 +49,7 @@ export async function fetchDonations() {
 
 /** Calls cb with the full list whenever any donation changes. Returns an unsubscribe fn. */
 export function subscribeDonations(cb) {
-  if (!configured) return () => {};
+  if (!supabase) return () => {};
   const ch = supabase
     .channel('donations')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, async () => {
