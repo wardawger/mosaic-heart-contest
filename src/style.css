@@ -1,7 +1,7 @@
 /* Single light look on purpose: the black outlines need a light ground. */
 :root {
   color-scheme: light;
-  --bg: #a4a7ae; --bg-hi: #c1c4c9; --bg-lo: #858991; --fg: #1a1a22; --muted: #3d3b44; --card: #ffffff; --line: #dcdde2; --accent: #e0377a;
+  --bg: #a4a7ae; --bg-hi: #c1c4c9; --bg-lo: #858991; --fg: #1a1a22; --muted: #3d3b44; --card: #ffffff; --line: #dcdde2; --accent: #e0377a; --anim-base: #6e6e6e;
 }
 * { box-sizing: border-box; }
 body {
@@ -43,6 +43,12 @@ body {
 .notice { margin: 0 16px; padding: 10px 14px; border-radius: 10px; background: #fff3cd; color: #5c4600; text-align: center; }
 footer { text-align: center; padding: 12px; font-size: .85rem; }
 footer a { color: var(--muted); }
+
+/* Heart page: animated grayscale gradient (see src/background.js). */
+body.home { background: var(--anim-base); }
+.bg-anim { position: fixed; inset: 0; z-index: -1; overflow: hidden; isolation: isolate; pointer-events: none; background: var(--anim-base); }
+.bg-anim > div { position: absolute; left: 0; top: 0; border-radius: 50%; filter: blur(60px); mix-blend-mode: screen; will-change: transform; }
+.home .sub, .home footer a { color: #24232a; }
 /* drawer parts are desktop-hidden */
 .handle, .drawer-admin { display: none; }
 .drawer-body { display: contents; }

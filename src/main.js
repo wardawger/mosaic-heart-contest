@@ -1,6 +1,7 @@
 import './style.css';
 import { SECTIONS, byId } from './sections.js';
 import { createHeart } from './heart.js';
+import { startBackground } from './background.js';
 import { configured, demo, fetchDonations, subscribeDonations, donorName, money } from './data.js';
 
 const $ = (s) => document.querySelector(s);
@@ -38,6 +39,8 @@ function showTip(id, ev) {
     if (r) { tip.style.left = Math.max(8, r.left - tip.offsetWidth - 12) + 'px'; tip.style.top = r.top + 'px'; }
   }
 }
+
+startBackground($('#bg'));
 
 const heart = createHeart($('#stage'), {
   onHover: (id, ev) => showTip(id, ev),
