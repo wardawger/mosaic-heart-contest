@@ -49,6 +49,59 @@ const frag = /* glsl */ `
   }
 `;
 
+// Dividing lines: an offscreen pass writes, per pixel, which section is visible
+// (r), whether the peel has passed that spot (g), hover (b) and view depth (a).
+// A full-screen overlay then draws a line wherever two sections meet at about
+// the same depth, each half in its own section's state.
+const OCCLUDER = 200; // outlines and valves: block dividers, never get one
+const idVert = /* glsl */ `
+  attribute float aU;
+  uniform float uProgress;
+  uniform float uW;
+  uniform float uThick;
+  varying float vT;
+  varying float vDepth;
+  void main() {
+    vT = uProgress * (1.0 + uW) - aU;
+    vec4 mv = modelViewMatrix * vec4(position + normal * uThick, 1.0);
+    vDepth = -mv.z;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const idFrag = /* glsl */ `
+  uniform float uId;
+  uniform float uHover;
+  varying float vT;
+  varying float vDepth;
+  void main() { gl_FragColor = vec4(uId, vT > 0.0 ? 1.0 : 0.0, uHover, vDepth); }
+`;
+const dividerFrag = /* glsl */ `
+  uniform sampler2D tId;
+  uniform vec2 uTexel;
+  uniform float uRadius;
+  uniform vec3 uPalette[${SECTIONS.length + 1}];
+  uniform vec3 uBlack;
+  varying vec2 vUv;
+  bool isSection(float id) { return id > 0.5 && id < ${OCCLUDER - 1}.0; }
+  void main() {
+    vec4 c = texture2D(tId, vUv);
+    if (!isSection(c.r)) discard;
+    bool edge = false;
+    for (int i = 0; i < 12; i++) {
+      float a = float(i) * 0.5235988;
+      for (int j = 1; j <= 2; j++) {
+        vec2 off = vec2(cos(a), sin(a)) * uRadius * float(j) * 0.3 * uTexel;
+        vec4 n = texture2D(tId, vUv + off);
+        if (isSection(n.r) && abs(n.r - c.r) > 0.5 && abs(n.a - c.a) < 0.6) edge = true;
+      }
+    }
+    if (!edge) discard;
+    vec3 col = c.g > 0.5 ? uPalette[int(c.r + 0.5)] : uBlack;
+    col = mix(col, vec3(1.0), c.b * (c.g > 0.5 ? 0.25 : 0.18));
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
 // ---- geometry helpers (all geometry is baked into world space) ----
 function finish(geo) {
   geo.deleteAttribute('normal');
@@ -169,7 +222,18 @@ export function createHeart(container, { onHover, onSelect }) {
     });
   }
 
-  for (const sec of SECTIONS) {
+  const idMaterial = (uniforms, id, opts) => new THREE.ShaderMaterial({
+    vertexShader: idVert,
+    fragmentShader: idFrag,
+    side: opts.side,
+    uniforms: {
+      uProgress: uniforms.uProgress, uW: uniforms.uW, uHover: uniforms.uHover,
+      uThick: { value: opts.thick }, uId: { value: id },
+    },
+  });
+  const palette = [BLACK.clone(), ...SECTIONS.map((s) => new THREE.Color(s.color))];
+
+  SECTIONS.forEach((sec, si) => {
     const uniforms = {
       uProgress: { value: 0 }, uW: { value: PEEL_WIDTH }, uHover: { value: 0 },
       uColor: { value: new THREE.Color(sec.color) }, uBlack: { value: BLACK },
@@ -177,21 +241,23 @@ export function createHeart(container, { onHover, onSelect }) {
     const entry = { sec, uniforms, anim: null, revealed: false, hover: 0, hoverTarget: 0 };
     state.set(sec.id, entry);
     const sh = sec.shape;
-    const add = (mesh, pick) => {
+    const add = (mesh, pick, idMat = null) => {
       mesh.userData.sectionId = sec.id;
+      mesh.userData.idMat = idMat;
       heart.add(mesh);
       if (pick) pickables.push(mesh);
     };
 
     if (sh.kind === 'valve') {
       const geo = tubeGeo(new Ring(sh.c, sh.n, sh.R), VALVE_R, 96, true);
-      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0 })), true);
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0 })), true,
+        idMaterial(uniforms, OCCLUDER, { side: THREE.FrontSide, thick: 0 }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0.01, lift: 0.35, flap: true, transparent: true })));
       // faint x-ray pass so valves inside the heart can still be found
       const ghost = new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0, transparent: true, alpha: 0.18, depthFunc: THREE.GreaterDepth }));
       ghost.renderOrder = 2;
       add(ghost);
-      continue;
+      return;
     }
 
     const geos = [];
@@ -206,10 +272,49 @@ export function createHeart(container, { onHover, onSelect }) {
       });
     }
     for (const geo of geos) {
-      add(new THREE.Mesh(geo, fillMat), true);
-      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })));
+      add(new THREE.Mesh(geo, fillMat), true, idMaterial(uniforms, si + 1, { side: THREE.FrontSide, thick: 0 }));
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })), false,
+        idMaterial(uniforms, OCCLUDER, { side: THREE.BackSide, thick: OUTLINE }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE, lift: 0.45, flap: true, transparent: true })));
     }
+  });
+
+  // ---- divider pass ----
+  const idTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  const overlayCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const overlay = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: dividerFrag,
+    depthTest: false,
+    depthWrite: false,
+    uniforms: {
+      tId: { value: idTarget.texture }, uTexel: { value: new THREE.Vector2() }, uRadius: { value: 3 },
+      uPalette: { value: palette }, uBlack: { value: BLACK },
+    },
+  }));
+  const overlayScene = new THREE.Scene();
+  overlayScene.add(overlay);
+  const swapped = [];
+  function renderDividers() {
+    heart.traverse((m) => {
+      if (!m.isMesh) return;
+      swapped.push([m, m.material, m.visible]);
+      if (m.userData.idMat) m.material = m.userData.idMat;
+      else m.visible = false;
+    });
+    const clear = renderer.getClearColor(new THREE.Color());
+    const alpha = renderer.getClearAlpha();
+    renderer.setRenderTarget(idTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    for (const [m, mat, vis] of swapped) { m.material = mat; m.visible = vis; }
+    swapped.length = 0;
+    renderer.autoClear = false;
+    renderer.render(overlayScene, overlayCam);
+    renderer.autoClear = true;
   }
 
   // ---- interaction ----
@@ -248,6 +353,11 @@ export function createHeart(container, { onHover, onSelect }) {
     const w = container.clientWidth;
     const h = container.clientHeight;
     renderer.setSize(w, h);
+    const buf = renderer.getDrawingBufferSize(new THREE.Vector2());
+    idTarget.setSize(buf.x, buf.y);
+    overlay.material.uniforms.uTexel.value.set(1 / buf.x, 1 / buf.y);
+    // match the hull outline width: OUTLINE world units at the camera distance, in buffer px
+    overlay.material.uniforms.uRadius.value = Math.max(2, buf.y * OUTLINE / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 15));
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
@@ -280,6 +390,7 @@ export function createHeart(container, { onHover, onSelect }) {
     }
     controls.update(dt);
     renderer.render(scene, camera);
+    renderDividers();
     requestAnimationFrame(frame);
   }
   frame();
