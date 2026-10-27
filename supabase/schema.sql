@@ -1,4 +1,4 @@
--- Run once in the Supabase SQL editor.
+-- Run in the Supabase SQL Editor (role: postgres). Safe to run more than once.
 create table if not exists public.donations (
   section_id  text primary key,                      -- matches ids in src/sections.js
   donor_type  text not null default 'person' check (donor_type in ('person','organization')),
@@ -18,6 +18,10 @@ create table if not exists public.donations (
 alter table public.donations enable row level security;
 
 -- Anyone can see what has been revealed.
+drop policy if exists "public read" on public.donations;
+drop policy if exists "admin insert" on public.donations;
+drop policy if exists "admin update" on public.donations;
+drop policy if exists "admin delete" on public.donations;
 create policy "public read" on public.donations
   for select to anon, authenticated using (true);
 
@@ -30,4 +34,12 @@ create policy "admin delete" on public.donations
   for delete to authenticated using (true);
 
 -- Live updates so open browsers peel new sections without refreshing.
-alter publication supabase_realtime add table public.donations;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'donations'
+  ) then
+    alter publication supabase_realtime add table public.donations;
+  end if;
+end $$;
