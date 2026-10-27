@@ -3,8 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SECTIONS } from './sections.js';
 
-// The heart is drawn as outlines only: each volume gets an invisible fill in the
-// page background color plus an inverted hull (back faces pushed out along the
+// The heart is drawn as outlines only: each volume gets an invisible depth-only fill plus an inverted hull (back faces pushed out along the
 // normals) that shows up as a line around its silhouette.
 const OUTLINE = 0.075; // outline thickness in world units
 const VALVE_R = 0.05; // valve ring tube radius
@@ -46,6 +45,7 @@ const frag = /* glsl */ `
       c = mix(c, vec3(1.0), uHover * (vT > 0.0 ? 0.25 : 0.18));
       gl_FragColor = vec4(c, uAlpha);
     #endif
+    #include <colorspace_fragment>
   }
 `;
 
@@ -99,6 +99,7 @@ const dividerFrag = /* glsl */ `
     vec3 col = c.g > 0.5 ? uPalette[int(c.r + 0.5)] : uBlack;
     col = mix(col, vec3(1.0), c.b * (c.g > 0.5 ? 0.25 : 0.18));
     gl_FragColor = vec4(col, 1.0);
+    #include <colorspace_fragment>
   }
 `;
 
@@ -194,13 +195,9 @@ export function createHeart(container, { onHover, onSelect }) {
   heart.rotation.y = -0.15;
   scene.add(heart);
 
-  const fillMat = new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
-  function syncFill() {
-    fillMat.color.setStyle(getComputedStyle(document.body).backgroundColor || '#ffffff');
-  }
-  syncFill();
-  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setTimeout(syncFill, 50));
-  new MutationObserver(syncFill).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  // Depth-only fill: invisible (the page background shows through) but it still
+  // hides outlines behind each volume. Drawn first so it occludes everything later.
+  const fillMat = new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
   const state = new Map();
   const pickables = [];
@@ -272,7 +269,9 @@ export function createHeart(container, { onHover, onSelect }) {
       });
     }
     for (const geo of geos) {
-      add(new THREE.Mesh(geo, fillMat), true, idMaterial(uniforms, si + 1, { side: THREE.FrontSide, thick: 0 }));
+      const fill = new THREE.Mesh(geo, fillMat);
+      fill.renderOrder = -1;
+      add(fill, true, idMaterial(uniforms, si + 1, { side: THREE.FrontSide, thick: 0 }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })), false,
         idMaterial(uniforms, OCCLUDER, { side: THREE.BackSide, thick: OUTLINE }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE, lift: 0.45, flap: true, transparent: true })));
