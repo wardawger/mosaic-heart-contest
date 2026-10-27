@@ -1,7 +1,7 @@
 /* Single light look on purpose: the black outlines need a light ground. */
 :root {
   color-scheme: light;
-  --bg: #b8bbc1; --bg-hi: #d3d5d9; --bg-lo: #989ba2; --fg: #1a1a22; --muted: #4f4d57; --card: #ffffff; --line: #dcdde2; --accent: #e0377a;
+  --bg: #a4a7ae; --bg-hi: #c1c4c9; --bg-lo: #858991; --fg: #1a1a22; --muted: #3d3b44; --card: #ffffff; --line: #dcdde2; --accent: #e0377a;
 }
 * { box-sizing: border-box; }
 body {
