@@ -1,145 +1,214 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { SECTIONS } from './sections.js';
 
-const R_INNER = 0.15;
-const R_SHELL = 0.185;
-const PEEL_WIDTH = 0.35; // fraction of the path that is "curling" at once
+// The heart is drawn as outlines only: each volume gets an invisible fill in the
+// page background color plus an inverted hull (back faces pushed out along the
+// normals) that shows up as a line around its silhouette.
+const OUTLINE = 0.075; // outline thickness in world units
+const VALVE_R = 0.05; // valve ring tube radius
+const PEEL_WIDTH = 0.3; // fraction of a section that is curling at once
+const BLACK = new THREE.Color('#121214');
 
-// Map image px -> world units, with a soft bulge so the heart has depth.
-function toWorld([x, y]) {
-  const nx = (x - 236) / 250;
-  const ny = (y - 340) / 330;
-  const z = 1.1 * Math.max(0, 1 - nx * nx - ny * ny) - 0.3;
-  return new THREE.Vector3((x - 236) / 60, -(y - 340) / 60, z);
-}
-
-const shellVert = /* glsl */ `
+const vert = /* glsl */ `
   attribute float aU;
   uniform float uProgress;
-  uniform float uDir;
   uniform float uW;
+  uniform float uThick;
+  uniform float uLift;
   varying float vT;
-  varying vec3 vN;
-  varying vec3 vView;
   void main() {
-    float u = uDir > 0.5 ? 1.0 - aU : aU;
-    float t = uProgress * (1.0 + uW) - u;     // <0 intact, 0..uW curling, >uW gone
-    float k = clamp(t / uW, 0.0, 1.0);
-    vT = k;
-    vec3 p = position;
-    float lift = k * k * (3.0 - 2.0 * k);
-    p += normal * lift * 0.5;
-    p += vec3(0.25 * lift, 0.35 * lift, 1.1 * lift);
-    vN = normalize(normalMatrix * normal);
-    vec4 mv = modelViewMatrix * vec4(p, 1.0);
-    vView = normalize(-mv.xyz);
-    gl_Position = projectionMatrix * mv;
+    float t = uProgress * (1.0 + uW) - aU;   // >0 behind the peel front
+    vT = t;
+    vec3 p = position + normal * uThick;
+    #ifdef FLAP
+      float k = clamp(t / uW, 0.0, 1.0);
+      p += normal * (k * k * (3.0 - 2.0 * k)) * uLift;
+    #endif
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
-const shellFrag = /* glsl */ `
+const frag = /* glsl */ `
+  uniform vec3 uColor;
+  uniform vec3 uBlack;
+  uniform float uW;
   uniform float uHover;
+  uniform float uAlpha;
   varying float vT;
-  varying vec3 vN;
-  varying vec3 vView;
   void main() {
-    if (vT >= 0.999) discard;
-    vec3 n = normalize(vN);
-    float rim = pow(1.0 - abs(dot(n, vView)), 2.5);
-    float spec = pow(max(dot(reflect(-vView, n), normalize(vec3(0.4, 0.7, 0.6))), 0.0), 24.0);
-    vec3 c = vec3(0.035) + vec3(0.16) * rim + vec3(0.35) * spec + vec3(0.1) * uHover;
-    gl_FragColor = vec4(c, 1.0 - vT);
+    #ifdef FLAP
+      if (vT <= 0.0 || vT >= uW) discard;
+      float k = vT / uW;
+      gl_FragColor = vec4(uBlack + 0.12 * k, (1.0 - k) * 0.9);
+    #else
+      vec3 c = vT > 0.0 ? uColor : uBlack;
+      c = mix(c, vec3(1.0), uHover * (vT > 0.0 ? 0.25 : 0.18));
+      gl_FragColor = vec4(c, uAlpha);
+    #endif
   }
 `;
+
+// ---- geometry helpers (all geometry is baked into world space) ----
+function finish(geo) {
+  geo.deleteAttribute('normal');
+  geo.deleteAttribute('uv');
+  const g = mergeVertices(geo);
+  g.computeVertexNormals();
+  return g;
+}
+function setU(geo, fn) {
+  const pos = geo.attributes.position;
+  const a = new Float32Array(pos.count);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) a[i] = fn(v.fromBufferAttribute(pos, i), i);
+  geo.setAttribute('aU', new THREE.BufferAttribute(a, 1));
+  return geo;
+}
+function tubeGeo(curve, r, segs, closed = false) {
+  const g = new THREE.TubeGeometry(curve, segs, r, 20, closed);
+  setU(g, (_, i) => g.attributes.uv.getX(i));
+  return finish(g);
+}
+function sphereGeo(r, center, u) {
+  const g = finish(new THREE.SphereGeometry(r, 24, 16));
+  g.translate(center.x, center.y, center.z);
+  return setU(g, () => u);
+}
+function chamberGeo({ c, r, rot, taper, axis }) {
+  const g = finish(new THREE.SphereGeometry(1, 72, 48));
+  const pos = g.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < 0) {
+      const s = 1 + y * taper;
+      pos.setX(i, pos.getX(i) * s);
+      pos.setZ(i, pos.getZ(i) * s);
+    }
+  }
+  g.applyMatrix4(new THREE.Matrix4().compose(
+    new THREE.Vector3(...c),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)),
+    new THREE.Vector3(...r),
+  ));
+  g.computeVertexNormals();
+  const a = new THREE.Vector3(...axis[0]);
+  const ab = new THREE.Vector3(...axis[1]).sub(a);
+  const len2 = ab.lengthSq();
+  const tmp = new THREE.Vector3();
+  return setU(g, (p) => THREE.MathUtils.clamp(tmp.copy(p).sub(a).dot(ab) / len2, 0, 1));
+}
+class Ring extends THREE.Curve {
+  constructor(c, n, R) {
+    super();
+    this.c = new THREE.Vector3(...c);
+    const nn = new THREE.Vector3(...n).normalize();
+    this.a = new THREE.Vector3(0, 0, 1).cross(nn);
+    if (this.a.lengthSq() < 1e-4) this.a.set(1, 0, 0);
+    this.a.normalize();
+    this.b = nn.clone().cross(this.a).normalize();
+    this.R = R;
+  }
+  getPoint(t, out = new THREE.Vector3()) {
+    const th = t * Math.PI * 2;
+    return out.copy(this.c).addScaledVector(this.a, Math.cos(th) * this.R).addScaledVector(this.b, Math.sin(th) * this.R);
+  }
+}
 
 export function createHeart(container, { onHover, onSelect }) {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-  camera.position.set(0, 0, 23);
-
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.appendChild(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c0d8, 1.4));
-  const key = new THREE.DirectionalLight(0xffffff, 2.2);
-  key.position.set(4, 6, 9);
-  scene.add(key);
-
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = false;
   controls.enableDamping = true;
-  controls.minDistance = 14;
-  controls.maxDistance = 40;
-  controls.minAzimuthAngle = -0.9;
-  controls.maxAzimuthAngle = 0.9;
-  controls.minPolarAngle = 1.0;
-  controls.maxPolarAngle = 2.1;
+  controls.minPolarAngle = 0.35;
+  controls.maxPolarAngle = 2.6;
+  controls.autoRotate = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  controls.autoRotateSpeed = 0.7;
+  let idleTimer;
+  controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(idleTimer); });
+  controls.addEventListener('end', () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => { controls.autoRotate = !reduced; }, 6000);
+  });
 
   const heart = new THREE.Group();
+  heart.position.y = -0.75;
+  heart.rotation.y = -0.15;
   scene.add(heart);
 
-  const state = new Map(); // id -> { uniforms, inner materials, progress, target, ... }
+  const fillMat = new THREE.MeshBasicMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  function syncFill() {
+    fillMat.color.setStyle(getComputedStyle(document.body).backgroundColor || '#ffffff');
+  }
+  syncFill();
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => setTimeout(syncFill, 50));
+  new MutationObserver(syncFill).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  const state = new Map();
   const pickables = [];
 
+  function material(uniforms, opts) {
+    return new THREE.ShaderMaterial({
+      vertexShader: vert,
+      fragmentShader: frag,
+      defines: opts.flap ? { FLAP: '' } : {},
+      side: opts.side,
+      transparent: !!opts.transparent,
+      depthWrite: !opts.transparent,
+      depthFunc: opts.depthFunc ?? THREE.LessEqualDepth,
+      uniforms: {
+        uProgress: uniforms.uProgress, uW: uniforms.uW, uHover: uniforms.uHover,
+        uColor: uniforms.uColor, uBlack: uniforms.uBlack,
+        uThick: { value: opts.thick }, uLift: { value: opts.lift ?? 0 }, uAlpha: { value: opts.alpha ?? 1 },
+      },
+    });
+  }
+
   for (const sec of SECTIONS) {
-    const uniforms = { uProgress: { value: 0 }, uDir: { value: 0 }, uW: { value: PEEL_WIDTH }, uHover: { value: 0 } };
-    const innerMat = new THREE.MeshStandardMaterial({
-      color: sec.color, roughness: 0.35, metalness: 0.05, emissive: new THREE.Color(sec.color), emissiveIntensity: 0,
-    });
-    const entry = { sec, uniforms, innerMat, shells: [], anim: null, revealed: false, hover: 0, hoverTarget: 0 };
+    const uniforms = {
+      uProgress: { value: 0 }, uW: { value: PEEL_WIDTH }, uHover: { value: 0 },
+      uColor: { value: new THREE.Color(sec.color) }, uBlack: { value: BLACK },
+    };
+    const entry = { sec, uniforms, anim: null, revealed: false, hover: 0, hoverTarget: 0 };
     state.set(sec.id, entry);
+    const sh = sec.shape;
+    const add = (mesh, pick) => {
+      mesh.userData.sectionId = sec.id;
+      heart.add(mesh);
+      if (pick) pickables.push(mesh);
+    };
 
-    sec.paths.forEach((pts, pi) => {
-      const curve = new THREE.CatmullRomCurve3(pts.map(toWorld), false, 'catmullrom', 0.4);
-      const segs = Math.max(48, pts.length * 14);
-      const shellMat = new THREE.ShaderMaterial({
-        vertexShader: shellVert, fragmentShader: shellFrag, transparent: true, depthWrite: true,
-        uniforms: { ...uniforms, uDir: { value: pi % 2 } },
+    if (sh.kind === 'valve') {
+      const geo = tubeGeo(new Ring(sh.c, sh.n, sh.R), VALVE_R, 96, true);
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0 })), true);
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0.01, lift: 0.35, flap: true, transparent: true })));
+      // faint x-ray pass so valves inside the heart can still be found
+      const ghost = new THREE.Mesh(geo, material(uniforms, { side: THREE.FrontSide, thick: 0, transparent: true, alpha: 0.18, depthFunc: THREE.GreaterDepth }));
+      ghost.renderOrder = 2;
+      add(ghost);
+      continue;
+    }
+
+    const geos = [];
+    if (sh.kind === 'chamber') geos.push(chamberGeo(sh));
+    else {
+      sh.paths.forEach((pts, i) => {
+        const r = sh.radii?.[i] ?? sh.r;
+        const v = pts.map((p) => new THREE.Vector3(...p));
+        const curve = new THREE.CatmullRomCurve3(v, false, 'catmullrom', 0.5);
+        geos.push(tubeGeo(curve, r, Math.max(60, pts.length * 24)));
+        geos.push(sphereGeo(r, v[0], 0), sphereGeo(r, v[v.length - 1], 1));
       });
-      // share progress/hover by reference through a per-path wrapper
-      shellMat.uniforms.uProgress = uniforms.uProgress;
-      shellMat.uniforms.uHover = uniforms.uHover;
-      shellMat.uniforms.uW = uniforms.uW;
-
-      const addAU = (geo, fn) => {
-        const pos = geo.attributes.position;
-        const a = new Float32Array(pos.count);
-        for (let i = 0; i < pos.count; i++) a[i] = fn(i);
-        geo.setAttribute('aU', new THREE.BufferAttribute(a, 1));
-      };
-
-      const innerGeo = new THREE.TubeGeometry(curve, segs, R_INNER, 14, false);
-      const shellGeo = new THREE.TubeGeometry(curve, segs, R_SHELL, 14, false);
-      addAU(shellGeo, (i) => shellGeo.attributes.uv.getX(i));
-
-      const meshes = [new THREE.Mesh(innerGeo, innerMat), new THREE.Mesh(shellGeo, shellMat)];
-      // rounded end caps
-      [0, 1].forEach((end) => {
-        const p = curve.getPoint(end);
-        const capIn = new THREE.Mesh(new THREE.SphereGeometry(R_INNER, 14, 10), innerMat);
-        const capGeo = new THREE.SphereGeometry(R_SHELL, 14, 10);
-        addAU(capGeo, () => end);
-        const capSh = new THREE.Mesh(capGeo, shellMat);
-        capIn.position.copy(p);
-        capSh.position.copy(p);
-        meshes.push(capIn, capSh);
-      });
-      meshes.forEach((m) => {
-        m.userData.sectionId = sec.id;
-        heart.add(m);
-        pickables.push(m);
-      });
-      entry.shells.push(shellMat);
-    });
-
-    // Pulmonary artery opening ring
-    if (sec.id === 'pulmonary-artery') {
-      const ringGeo = new THREE.TorusGeometry(0.28, 0.07, 10, 28);
-      const ring = new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({ color: '#0b0b0b', roughness: 0.4 }));
-      ring.position.copy(toWorld([428, 156]));
-      ring.rotation.set(0.1, 1.2, 0.4);
-      heart.add(ring);
+    }
+    for (const geo of geos) {
+      add(new THREE.Mesh(geo, fillMat), true);
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })));
+      add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE, lift: 0.45, flap: true, transparent: true })));
     }
   }
 
@@ -153,11 +222,7 @@ export function createHeart(container, { onHover, onSelect }) {
     const r = renderer.domElement.getBoundingClientRect();
     pointer.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
-    const hit = raycaster.intersectObjects(pickables, false).find((h) => {
-      const e = state.get(h.object.userData.sectionId);
-      // fully-peeled shells shouldn't block; inner tube always hittable
-      return h.object.geometry && (e.uniforms.uProgress.value < 0.99 || h.object.material === e.innerMat);
-    });
+    const hit = raycaster.intersectObjects(pickables, false)[0];
     return hit ? hit.object.userData.sectionId : null;
   }
   function setHover(id, ev) {
@@ -167,7 +232,7 @@ export function createHeart(container, { onHover, onSelect }) {
     renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
     onHover?.(id, ev);
   }
-  renderer.domElement.addEventListener('pointermove', (ev) => setHover(pick(ev), ev));
+  renderer.domElement.addEventListener('pointermove', (ev) => { if (!downAt) setHover(pick(ev), ev); });
   renderer.domElement.addEventListener('pointerleave', () => setHover(null));
   renderer.domElement.addEventListener('pointerdown', (ev) => { downAt = [ev.clientX, ev.clientY]; });
   renderer.domElement.addEventListener('pointerup', (ev) => {
@@ -176,6 +241,7 @@ export function createHeart(container, { onHover, onSelect }) {
       setHover(id, ev);
       onSelect?.(id, ev);
     }
+    downAt = null;
   });
 
   function resize() {
@@ -183,34 +249,36 @@ export function createHeart(container, { onHover, onSelect }) {
     const h = container.clientHeight;
     renderer.setSize(w, h);
     camera.aspect = w / h;
-    camera.position.z = Math.max(23, 23 * (0.9 / camera.aspect));
     camera.updateProjectionMatrix();
+    const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const d = Math.max(8.8 / (2 * tan), 6.4 / (2 * tan * camera.aspect));
+    camera.position.setLength(d);
+    if (camera.position.lengthSq() === 0) camera.position.set(0, 0, d);
+    controls.minDistance = d * 0.5;
+    controls.maxDistance = d * 1.8;
   }
+  camera.position.set(0, 0.8, 1);
   new ResizeObserver(resize).observe(container);
   resize();
 
   // ---- loop ----
-  let last = performance.now(), elapsed = 0;
-  let reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  let last = performance.now();
   function frame() {
     const now = performance.now();
     const dt = Math.min((now - last) / 1000, 0.1);
-    last = now; elapsed += dt;
-    const t = elapsed;
-    heart.rotation.y = Math.sin(t * 0.4) * 0.08;
+    last = now;
     for (const e of state.values()) {
       if (e.anim) {
         e.anim.elapsed += dt;
-        const k = (e.anim.elapsed - e.anim.delay) / e.anim.duration;
-        const c = Math.min(Math.max(k, 0), 1);
-        e.uniforms.uProgress.value = c;
-        if (c >= 1) e.anim = null;
+        const k = THREE.MathUtils.clamp((e.anim.elapsed - e.anim.delay) / e.anim.duration, 0, 1);
+        e.uniforms.uProgress.value = k;
+        if (k >= 1) e.anim = null;
       }
       e.hover += (e.hoverTarget - e.hover) * Math.min(1, dt * 12);
       e.uniforms.uHover.value = e.hover;
-      e.innerMat.emissiveIntensity = e.revealed ? e.hover * 0.45 : 0;
     }
-    controls.update();
+    controls.update(dt);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);
   }
@@ -225,7 +293,7 @@ export function createHeart(container, { onHover, onSelect }) {
       if (reduced) { e.uniforms.uProgress.value = 1; return; }
       e.anim = { elapsed: 0, delay, duration: 2.4 };
     },
-    /** Put a section back under its black cover. */
+    /** Put a section back under its black outline. */
     cover(id) {
       const e = state.get(id);
       if (!e) return;
