@@ -164,7 +164,7 @@ async function renderDashboard() {
   // --- current donations table ---
   const tbody = el('tbody');
   const table = el('div', { className: 'card' }, el('h2', {}, 'Revealed sections'),
-    el('table', {}, el('thead', {}, el('tr', {}, ...['Section', 'Donor', 'Amount', 'Message', ''].map((h) => el('th', {}, h)))), tbody));
+    el('table', { className: 'donations' }, el('thead', {}, el('tr', {}, ...['Section', 'Donor', 'Amount', 'Message', ''].map((h) => el('th', {}, h)))), tbody));
 
   function renderTable() {
     tbody.replaceChildren();
@@ -172,9 +172,8 @@ async function renderDashboard() {
     for (const s of SECTIONS) {
       const r = rows.get(s.id);
       if (!r) continue;
-      const editBtn = el('button', { className: 'btn alt', type: 'button' }, 'Edit');
-      const delBtn = el('button', { className: 'btn danger', type: 'button' }, 'Re-cover');
-      editBtn.style.margin = delBtn.style.margin = '0 4px 0 0';
+      const editBtn = el('button', { className: 'row-btn', type: 'button' }, 'Edit');
+      const delBtn = el('button', { className: 'row-btn danger', type: 'button' }, 'Re-cover');
       editBtn.addEventListener('click', () => edit(s.id));
       delBtn.addEventListener('click', async () => {
         if (!confirm(`Cover ${s.name} again and delete ${donorName(r)}'s entry?`)) return;
@@ -182,8 +181,13 @@ async function renderDashboard() {
         if (error) return say(msg, 'Delete failed: ' + error.message, 'err');
         await reload(); reset();
       });
-      tbody.append(el('tr', {}, el('td', {}, s.name), el('td', {}, donorName(r)), el('td', {}, money(r.amount)),
-        el('td', {}, r.message || ''), el('td', {}, editBtn, delBtn)));
+      const td = (label, className, ...content) => {
+        const cell = el('td', { className }, ...content);
+        cell.dataset.label = label;
+        return cell;
+      };
+      tbody.append(el('tr', {}, td('Section', '', s.name), td('Donor', '', donorName(r)), td('Amount', '', money(r.amount)),
+        td('Message', 'msg-cell', r.message || '\u2014'), td('', 'actions', editBtn, delBtn)));
     }
   }
   async function reload() {
