@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { SECTIONS } from './sections.js';
+import { SECTIONS, CORONARIES } from './sections.js';
 
 // The heart is drawn as outlines only: each volume gets an invisible depth-only fill plus an inverted hull (back faces pushed out along the
 // normals) that shows up as a line around its silhouette.
@@ -203,6 +203,7 @@ export function createHeart(container, { onHover, onSelect }) {
   const fillMat = new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
   const state = new Map();
+  const chamberFills = [];
   const pickables = [];
 
   function material(uniforms, opts) {
@@ -274,12 +275,53 @@ export function createHeart(container, { onHover, onSelect }) {
     for (const geo of geos) {
       const fill = new THREE.Mesh(geo, fillMat);
       fill.renderOrder = -1;
+      if (sh.kind === 'chamber') chamberFills.push(fill);
       add(fill, true, idMaterial(uniforms, si + 1, { side: THREE.FrontSide, thick: 0 }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })), false,
         idMaterial(uniforms, OCCLUDER, { side: THREE.BackSide, thick: OUTLINE }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE, lift: 0.45, flap: true, transparent: true })));
     }
   });
+
+  // ---- coronary arteries (decorative) ----
+  // Sample each guide curve, project every sample onto the chamber surfaces by
+  // casting a ray from outside toward the heart's core, then run a thin black
+  // tube through the projected points. They block chamber dividers underneath.
+  {
+    const ray = new THREE.Raycaster();
+    const coreOf = (p) => new THREE.Vector3(0.2, p.y, -0.4);
+    const dir = new THREE.Vector3();
+    const coronaryMat = new THREE.MeshBasicMaterial({ color: BLACK });
+    const still = { uProgress: { value: 0 }, uW: { value: PEEL_WIDTH }, uHover: { value: 0 } };
+    const coronaryId = idMaterial(still, OCCLUDER, { side: THREE.FrontSide, thick: 0 });
+    for (const { r, pts } of CORONARIES) {
+      const guide = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
+      const n = 48;
+      const onSurface = [];
+      for (let i = 0; i <= n; i++) {
+        const p = guide.getPoint(i / n);
+        const core = coreOf(p);
+        dir.copy(core).sub(p).normalize();
+        ray.set(core.clone().addScaledVector(dir, -8), dir);
+        const hit = ray.intersectObjects(chamberFills, false)[0];
+        if (!hit) continue;
+        // sit the tube about half way out of the surface
+        onSurface.push(hit.point.addScaledVector(dir, -r * 0.5));
+      }
+      if (onSurface.length < 4) continue;
+      const curve = new THREE.CatmullRomCurve3(onSurface, false, 'catmullrom', 0.5);
+      const geo = new THREE.TubeGeometry(curve, onSurface.length * 3, r, 10, false);
+      const tube = new THREE.Mesh(geo, coronaryMat);
+      tube.userData.idMat = coronaryId;
+      heart.add(tube);
+      for (const end of [0, 1]) {
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), coronaryMat);
+        cap.position.copy(curve.getPoint(end));
+        cap.userData.idMat = coronaryId;
+        heart.add(cap);
+      }
+    }
+  }
 
   // ---- divider pass ----
   const idTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });

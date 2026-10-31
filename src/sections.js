@@ -100,3 +100,21 @@ export const SECTIONS = [
 ];
 
 export const byId = Object.fromEntries(SECTIONS.map((s) => [s.id, s]));
+
+// Decorative coronary arteries (not donation sections). Points are rough guides
+// just outside the heart; each line is projected onto the chamber surfaces so
+// it lies on the heart, and drawn in the outline black.
+export const CORONARIES = [
+  // left anterior descending: down the groove between the ventricles to the apex
+  { r: 0.055, pts: [[0.25, 0.55, 1.1], [0.55, -0.2, 1.1], [0.85, -1.1, 1.0], [1.15, -1.9, 0.8], [1.45, -2.55, 0.45]] },
+  // diagonal branches onto the left ventricle
+  { r: 0.04, pts: [[0.62, -0.45, 1.1], [1.15, -0.8, 1.0], [1.7, -1.25, 0.7]] },
+  { r: 0.04, pts: [[0.95, -1.45, 1.0], [1.4, -1.75, 0.8], [1.8, -2.05, 0.4]] },
+  // right coronary: around the right side between the right atrium and ventricle
+  { r: 0.055, pts: [[-0.45, 0.75, 1.0], [-0.95, 0.25, 1.0], [-1.3, -0.35, 0.9], [-1.4, -1.0, 0.6], [-1.05, -1.65, 0.35], [-0.35, -2.0, 0.1]] },
+  // acute marginal branch across the right ventricle
+  { r: 0.04, pts: [[-1.3, -0.55, 0.95], [-0.85, -1.2, 1.0], [-0.45, -1.75, 0.8]] },
+  // circumflex: around the left side toward the back, with an obtuse marginal branch
+  { r: 0.05, pts: [[0.4, 0.45, 0.7], [1.15, 0.15, 0.5], [1.8, -0.35, 0.0], [1.95, -0.9, -0.7]] },
+  { r: 0.04, pts: [[1.65, -0.2, 0.25], [2.0, -0.95, 0.15], [2.1, -1.6, -0.1]] },
+];
