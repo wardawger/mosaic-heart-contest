@@ -102,19 +102,26 @@ export const SECTIONS = [
 export const byId = Object.fromEntries(SECTIONS.map((s) => [s.id, s]));
 
 // Decorative coronary arteries (not donation sections). Points are rough guides
-// just outside the heart; each line is projected onto the chamber surfaces so
-// it lies on the heart, and drawn in the outline black.
+// just outside the heart; each line is projected onto the chamber surfaces so it
+// lies on the heart, and drawn in the outline black.
+//   root: a fixed start point at the base of the aorta (not projected)
+//   from: start on another artery instead, at fraction t along it
+//   groove: [sectionA, sectionB, axis] runs the artery along the line where those
+//           two chambers meet, searching sideways along x or y from each guide point
+//           (guide points where the chambers don't meet are projected as usual)
+// List parents before their branches.
 export const CORONARIES = [
-  // left anterior descending: down the groove between the ventricles to the apex
-  { r: 0.055, pts: [[0.25, 0.55, 1.1], [0.55, -0.2, 1.1], [0.85, -1.1, 1.0], [1.15, -1.9, 0.8], [1.45, -2.55, 0.45]] },
+  // left anterior descending: from the aortic root down the groove between the ventricles to the apex
+  { id: 'lad', r: 0.034, root: [0.05, 0.78, 0.55], groove: ['right-ventricle', 'left-ventricle', 'x'], pts: [[0.3, 0.45, 1.1], [0.55, -0.2, 1.1], [0.85, -1.1, 1.0], [1.15, -1.9, 0.8], [1.45, -2.55, 0.45]] },
+  // circumflex: shares the left main stem, then wraps around the left side toward the back
+  { id: 'cx', r: 0.03, from: { id: 'lad', t: 0.06 }, groove: ['left-atrium', 'left-ventricle', 'y'], pts: [[1.15, 0.15, 0.5], [1.8, -0.35, 0.0], [1.95, -0.9, -0.7]] },
   // diagonal branches onto the left ventricle
-  { r: 0.04, pts: [[0.62, -0.45, 1.1], [1.15, -0.8, 1.0], [1.7, -1.25, 0.7]] },
-  { r: 0.04, pts: [[0.95, -1.45, 1.0], [1.4, -1.75, 0.8], [1.8, -2.05, 0.4]] },
-  // right coronary: around the right side between the right atrium and ventricle
-  { r: 0.055, pts: [[-0.45, 0.75, 1.0], [-0.95, 0.25, 1.0], [-1.3, -0.35, 0.9], [-1.4, -1.0, 0.6], [-1.05, -1.65, 0.35], [-0.35, -2.0, 0.1]] },
+  { id: 'd1', r: 0.024, from: { id: 'lad', t: 0.25 }, pts: [[1.35, -0.5, 0.95], [1.95, -0.85, 0.5]] },
+  { id: 'd2', r: 0.024, from: { id: 'lad', t: 0.5 }, pts: [[1.6, -1.3, 0.75], [2.05, -1.55, 0.25]] },
+  // obtuse marginal branch down the side of the left ventricle
+  { id: 'om', r: 0.024, from: { id: 'cx', t: 0.55 }, pts: [[2.0, -0.95, 0.15], [2.1, -1.6, -0.1]] },
+  // right coronary: from the aortic root around the right side between the right atrium and ventricle
+  { id: 'rca', r: 0.034, root: [-0.62, 0.85, 0.45], groove: ['right-atrium', 'right-ventricle', 'x'], pts: [[-0.95, 0.25, 1.0], [-1.3, -0.35, 0.9], [-1.4, -1.0, 0.6], [-1.05, -1.65, 0.35], [-0.35, -2.0, 0.1]] },
   // acute marginal branch across the right ventricle
-  { r: 0.04, pts: [[-1.3, -0.55, 0.95], [-0.85, -1.2, 1.0], [-0.45, -1.75, 0.8]] },
-  // circumflex: around the left side toward the back, with an obtuse marginal branch
-  { r: 0.05, pts: [[0.4, 0.45, 0.7], [1.15, 0.15, 0.5], [1.8, -0.35, 0.0], [1.95, -0.9, -0.7]] },
-  { r: 0.04, pts: [[1.65, -0.2, 0.25], [2.0, -0.95, 0.15], [2.1, -1.6, -0.1]] },
+  { id: 'am', r: 0.024, from: { id: 'rca', t: 0.45 }, pts: [[-0.85, -1.2, 1.0], [-0.45, -1.75, 0.8]] },
 ];

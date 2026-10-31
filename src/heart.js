@@ -285,37 +285,75 @@ export function createHeart(container, { onHover, onSelect }) {
 
   // ---- coronary arteries (decorative) ----
   // Sample each guide curve, project every sample onto the chamber surfaces by
-  // casting a ray from outside toward the heart's core, then run a thin black
-  // tube through the projected points. They block chamber dividers underneath.
+  // casting a ray from outside toward the heart's core, smooth the result, then
+  // run a thin black tube through it. Trunks start at the aortic root; branches
+  // start exactly on their parent. They block chamber dividers underneath.
   {
     const ray = new THREE.Raycaster();
-    const coreOf = (p) => new THREE.Vector3(0.2, p.y, -0.4);
     const dir = new THREE.Vector3();
+    const cast = (p) => {
+      const core = new THREE.Vector3(0.2, p.y, -0.4);
+      dir.copy(core).sub(p).normalize();
+      ray.set(core.clone().addScaledVector(dir, -8), dir);
+      const hit = ray.intersectObjects(chamberFills, false)[0];
+      return hit ? { point: hit.point, id: hit.object.userData.sectionId, dir: dir.clone() } : null;
+    };
+    // sit the tube about half way out of the surface
+    const project = (p, r) => {
+      const h = cast(p);
+      return h ? h.point.addScaledVector(h.dir, -r * 0.5) : null;
+    };
+    // Slide sideways from p (along x or y) to the nearest spot where the surface
+    // changes from chamber a to chamber b; null if they don't meet nearby.
+    const toGroove = (p, [a, b, axis], r) => {
+      const at = (d) => { const q = p.clone(); q[axis] += d; return cast(q); };
+      let best = null;
+      for (const sign of [1, -1]) {
+        let prev = at(0);
+        for (let d = 0.03; d <= 0.9 && (!best || d < best.d); d += 0.03) {
+          const cur = at(sign * d);
+          if (prev && cur && prev.id !== cur.id && [a, b].includes(prev.id) && [a, b].includes(cur.id)) {
+            best = { d, h: at(sign * (d - 0.015)) };
+            break;
+          }
+          prev = cur;
+        }
+      }
+      return best?.h ? best.h.point.addScaledVector(best.h.dir, -r * 0.5) : null;
+    };
+    const smooth = (pts, passes) => {
+      for (let k = 0; k < passes; k++) {
+        for (let i = 1; i < pts.length - 1; i++) {
+          pts[i] = pts[i - 1].clone().add(pts[i + 1]).multiplyScalar(0.25).addScaledVector(pts[i], 0.5);
+        }
+      }
+      return pts;
+    };
     const coronaryMat = new THREE.MeshBasicMaterial({ color: BLACK });
     const still = { uProgress: { value: 0 }, uW: { value: PEEL_WIDTH }, uHover: { value: 0 } };
     const coronaryId = idMaterial(still, OCCLUDER, { side: THREE.FrontSide, thick: 0 });
-    for (const { r, pts } of CORONARIES) {
-      const guide = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
-      const n = 48;
-      const onSurface = [];
-      for (let i = 0; i <= n; i++) {
-        const p = guide.getPoint(i / n);
-        const core = coreOf(p);
-        dir.copy(core).sub(p).normalize();
-        ray.set(core.clone().addScaledVector(dir, -8), dir);
-        const hit = ray.intersectObjects(chamberFills, false)[0];
-        if (!hit) continue;
-        // sit the tube about half way out of the surface
-        onSurface.push(hit.point.addScaledVector(dir, -r * 0.5));
+    const curves = {};
+
+    for (const { id, r, root, from, groove, pts } of CORONARIES) {
+      const start = root ? new THREE.Vector3(...root) : curves[from.id]?.getPoint(from.t);
+      if (!start) continue;
+      const guide = new THREE.CatmullRomCurve3([start, ...pts.map((p) => new THREE.Vector3(...p))]);
+      const n = 40;
+      const line = [start.clone()];
+      for (let i = 1; i <= n; i++) {
+        const g = guide.getPoint(i / n);
+        const p = (groove && toGroove(g, groove, r)) || project(g, r);
+        if (p) line.push(p);
       }
-      if (onSurface.length < 4) continue;
-      const curve = new THREE.CatmullRomCurve3(onSurface, false, 'catmullrom', 0.5);
-      const geo = new THREE.TubeGeometry(curve, onSurface.length * 3, r, 10, false);
-      const tube = new THREE.Mesh(geo, coronaryMat);
+      if (line.length < 4) continue;
+      smooth(line, 4);
+      const curve = new THREE.CatmullRomCurve3(line, false, 'centripetal');
+      curves[id] = curve;
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, line.length * 4, r, 8, false), coronaryMat);
       tube.userData.idMat = coronaryId;
       heart.add(tube);
       for (const end of [0, 1]) {
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), coronaryMat);
+        const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), coronaryMat);
         cap.position.copy(curve.getPoint(end));
         cap.userData.idMat = coronaryId;
         heart.add(cap);
