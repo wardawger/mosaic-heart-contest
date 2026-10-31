@@ -123,7 +123,7 @@ function setU(geo, fn) {
   return geo;
 }
 function tubeGeo(curve, r, segs, closed = false) {
-  const g = new THREE.TubeGeometry(curve, segs, r, 20, closed);
+  const g = new THREE.TubeGeometry(curve, segs, r, 16, closed);
   setU(g, (_, i) => g.attributes.uv.getX(i));
   return finish(g);
 }
@@ -133,7 +133,7 @@ function sphereGeo(r, center, u) {
   return setU(g, () => u);
 }
 function chamberGeo({ c, r, rot, taper, axis }) {
-  const g = finish(new THREE.SphereGeometry(1, 72, 48));
+  const g = finish(new THREE.SphereGeometry(1, 56, 40));
   const pos = g.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i);
@@ -203,7 +203,6 @@ export function createHeart(container, { onHover, onSelect }) {
   const fillMat = new THREE.MeshBasicMaterial({ colorWrite: false, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 
   const state = new Map();
-  const chamberFills = [];
   const pickables = [];
 
   function material(uniforms, opts) {
@@ -275,7 +274,6 @@ export function createHeart(container, { onHover, onSelect }) {
     for (const geo of geos) {
       const fill = new THREE.Mesh(geo, fillMat);
       fill.renderOrder = -1;
-      if (sh.kind === 'chamber') chamberFills.push(fill);
       add(fill, true, idMaterial(uniforms, si + 1, { side: THREE.FrontSide, thick: 0 }));
       add(new THREE.Mesh(geo, material(uniforms, { side: THREE.BackSide, thick: OUTLINE })), false,
         idMaterial(uniforms, OCCLUDER, { side: THREE.BackSide, thick: OUTLINE }));
@@ -289,14 +287,56 @@ export function createHeart(container, { onHover, onSelect }) {
   // run a thin black tube through it. Trunks start at the aortic root; branches
   // start exactly on their parent. They block chamber dividers underneath.
   {
-    const ray = new THREE.Raycaster();
+    // Rays are tested against the chamber shapes analytically (the same egg
+    // shapes chamberGeo builds) rather than their meshes: thousands of mesh
+    // raycasts would stall page load on phones.
+    const shapes = SECTIONS.filter((x) => x.shape.kind === 'chamber').map(({ id, shape: c }) => {
+      const m = new THREE.Matrix4().compose(
+        new THREE.Vector3(...c.c),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(...c.rot)),
+        new THREE.Vector3(...c.r),
+      );
+      return { id, inv: m.invert(), taper: c.taper, center: new THREE.Vector3(...c.c), R: Math.max(...c.r) * 1.05 };
+    });
+    const q = new THREE.Vector3();
+    const inside = (sh, p) => {
+      q.copy(p).applyMatrix4(sh.inv);
+      const k = q.y < 0 ? 1 + q.y * sh.taper : 1;
+      return (q.x / k) ** 2 + q.y ** 2 + (q.z / k) ** 2 <= 1;
+    };
+    const pt = new THREE.Vector3();
+    const oc = new THREE.Vector3();
+    // first surface hit along origin + t * d (d normalized), or null
+    const hitShape = (sh, o, d) => {
+      oc.copy(o).sub(sh.center);
+      const b = oc.dot(d);
+      const disc = b * b - (oc.lengthSq() - sh.R * sh.R);
+      if (disc < 0) return null;
+      const t0 = Math.max(0, -b - Math.sqrt(disc));
+      const t1 = -b + Math.sqrt(disc);
+      const step = 0.02;
+      for (let t = t0 + step; t <= t1; t += step) {
+        if (!inside(sh, pt.copy(o).addScaledVector(d, t))) continue;
+        let lo = t - step, hi = t;
+        for (let i = 0; i < 12; i++) {
+          const mid = (lo + hi) / 2;
+          if (inside(sh, pt.copy(o).addScaledVector(d, mid))) hi = mid; else lo = mid;
+        }
+        return hi;
+      }
+      return null;
+    };
     const dir = new THREE.Vector3();
     const cast = (p) => {
       const core = new THREE.Vector3(0.2, p.y, -0.4);
       dir.copy(core).sub(p).normalize();
-      ray.set(core.clone().addScaledVector(dir, -8), dir);
-      const hit = ray.intersectObjects(chamberFills, false)[0];
-      return hit ? { point: hit.point, id: hit.object.userData.sectionId, dir: dir.clone() } : null;
+      const origin = core.clone().addScaledVector(dir, -8);
+      let best = null;
+      for (const sh of shapes) {
+        const t = hitShape(sh, origin, dir);
+        if (t !== null && (!best || t < best.t)) best = { t, id: sh.id };
+      }
+      return best ? { point: origin.addScaledVector(dir, best.t), id: best.id, dir: dir.clone() } : null;
     };
     // sit the tube about half way out of the surface
     const project = (p, r) => {
