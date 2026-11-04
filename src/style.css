@@ -176,13 +176,48 @@ body.home { background: var(--anim-base); }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin-bottom: 16px; }
 .card h2 { margin-top: 0; }
 label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: .9rem; }
+/* Text fields and buttons get the same color treatment as the choice cards,
+   in the accent (or the button's own color): a tinted border on hover, and a
+   colored border, glow and faint tint while typing; buttons lift and glow. */
 input[type=text], input[type=email], input[type=password], input[type=number], textarea {
+  --pc: var(--accent);
   width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #c4c6cc; background: var(--card); color: var(--fg); font: inherit;
+  outline: none;
+  transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+:is(input[type=text], input[type=email], input[type=password], input[type=number], textarea):hover {
+  border-color: color-mix(in srgb, var(--pc) 55%, #c4c6cc);
+}
+:is(input[type=text], input[type=email], input[type=password], input[type=number], textarea):focus {
+  border-color: var(--pc);
+  background: color-mix(in srgb, var(--pc) 4%, var(--card));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 22%, transparent), 0 6px 16px color-mix(in srgb, var(--pc) 16%, transparent);
 }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.btn, .row-btn {
+  --pc: var(--accent);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+}
 .btn { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 16px; }
 .btn.alt { background: none; color: var(--fg); border: 1px solid var(--line); }
+.btn.danger, .row-btn.danger { --pc: #c0392b; }
 .btn.danger { background: #c0392b; }
+.btn:hover, .row-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--pc) 32%, transparent);
+}
+.btn:not(.alt):hover { background: color-mix(in srgb, var(--pc) 88%, #000); }
+.btn.alt:hover, .row-btn:not(.danger):hover {
+  border-color: var(--pc);
+  background: color-mix(in srgb, var(--pc) 8%, var(--card));
+}
+.row-btn.danger:hover { background: color-mix(in srgb, var(--pc) 88%, #000); }
+.btn:active, .row-btn:active { transform: translateY(0) scale(.98); box-shadow: 0 2px 6px color-mix(in srgb, var(--pc) 22%, transparent); }
+.btn:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 40%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .btn, .row-btn, input, textarea { transition: none; }
+  .btn:hover, .row-btn:hover, .btn:active, .row-btn:active { transform: none; }
+}
 /* Choice cards (shadcn Field-as-card layout): the whole card is the label,
    a checkbox or radio sits beside a title and a muted description. Section
    cards are tinted with their section color, more strongly when checked. */
