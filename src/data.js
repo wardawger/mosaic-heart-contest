@@ -37,9 +37,17 @@ export const DEMO_ROWS = [
   { section_id: 'mitral-valve', donor_type: 'person', first_name: 'Sam', last_name: 'Ortiz', amount: 25, message: 'In memory of Grandpa Joe.' },
 ];
 
+// ?demo=all reveals every section, to preview the finished heart
+const demoAll = new URLSearchParams(location.search).get('demo') === 'all';
+
 export async function fetchDonations() {
   if (!supabase) {
     if (configError) throw new Error(configError);
+    if (demoAll) {
+      const { SECTIONS } = await import('./sections.js');
+      return SECTIONS.map((s, i) => DEMO_ROWS.find((r) => r.section_id === s.id)
+        ?? { section_id: s.id, donor_type: 'person', first_name: 'Sample', last_name: `Donor ${i + 1}`, amount: s.price, message: null });
+    }
     return demo ? DEMO_ROWS : [];
   }
   const { data, error } = await supabase.from('donations').select('*');

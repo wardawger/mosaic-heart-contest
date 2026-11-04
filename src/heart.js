@@ -62,7 +62,7 @@ function resample(points) {
 
 // Ribbon (and optional round end caps) for one stroke, with per-vertex peel
 // position aU (0..1 along the stroke) and outward direction aSide.
-function strokeGeometry(pts, width, [capStart, capEnd]) {
+function strokeGeometry(pts, width, [capStart, capEnd], uConst = null) {
   const pos = [], side = [], u = [], idx = [];
   const len = [0];
   for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + pts[i].distanceTo(pts[i - 1]));
@@ -75,7 +75,7 @@ function strokeGeometry(pts, width, [capStart, capEnd]) {
     for (const s of [1, -1]) {
       pos.push(pts[i].x + n.x * r * s, pts[i].y + n.y * r * s, 0);
       side.push(n.x * s, n.y * s);
-      u.push(len[i] / total);
+      u.push(uConst ?? len[i] / total);
     }
     if (i > 0) {
       const k = i * 2;
@@ -140,14 +140,23 @@ export function createHeart(container, { onHover, onSelect }) {
     for (const path of data.paths) {
       const pts = resample(path.p);
       if (pts.length < 2) continue;
-      const geo = strokeGeometry(pts, data.stroke, path.cap);
+      const geo = strokeGeometry(pts, data.stroke, path.cap, path.under ? path.u : null);
       const mesh = new THREE.Mesh(geo, base);
-      mesh.position.z = order * 0.01; // stable overlap order between sections
-      meshes.push(mesh);
-      const lift = new THREE.Mesh(geo, flap);
-      lift.renderOrder = 1;
-      heart.add(mesh, lift);
-      strokes.push(pts);
+      // Joins: a line that runs into the side of another stroke continues to
+      // that stroke's center underneath everything (path.under), so the other
+      // stroke always covers it.
+      if (path.under) mesh.position.z = -5;
+      else {
+        mesh.position.z = order * 0.01; // stable overlap order between sections
+        meshes.push(mesh);
+      }
+      heart.add(mesh);
+      if (!path.under) {
+        const lift = new THREE.Mesh(geo, flap);
+        lift.renderOrder = 1;
+        heart.add(lift);
+        strokes.push(pts);
+      }
     }
     state.set(sec.id, { sec, uniforms, strokes, meshes, order, half: data.stroke / 2, anim: null, revealed: false, hover: 0, hoverTarget: 0 });
   }
