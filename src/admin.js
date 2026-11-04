@@ -195,11 +195,11 @@ async function renderDashboard() {
     refreshPicks(); renderTable();
   }
 
-  const signOut = el('button', { className: 'btn alt', type: 'button' }, 'Sign out');
+  const signOut = el('button', { className: 'rainbow-btn', type: 'button' }, 'Sign out');
   signOut.addEventListener('click', async () => { await supabase.auth.signOut(); renderLogin(); });
 
   refreshPicks(); renderTable();
-  app.replaceChildren(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' }, el('h1', {}, 'Mosaic Heart admin'), signOut), form, table);
+  app.replaceChildren(el('div', { className: 'admin-bar' }, signOut), form, table);
 }
 
 start();
