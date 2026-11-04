@@ -12,4 +12,11 @@
 `npm install && npm run dev`. Open `/?demo` to preview with sample donors when Supabase isn't configured. Admin is at `/admin.html` (linked from the footer).
 
 ## Editing the heart
-`src/sections.js` holds each section's name, list price, color, and traced centerline points (from the Canva design). Adjust points to refine shapes. Section ids are the keys stored in the database.
+The heart is the flat line drawing in `design/heart-reference.png`. `scripts/trace_heart.py` traces it into `src/heart-paths.json` (one set of strokes per section, by color), which `src/heart.js` draws with three.js. To change the artwork, replace the PNG (keep one color per section, update `COLORS` in the script and the matching colors in `src/sections.js`), then run:
+
+```
+pip install numpy scipy scikit-image pillow
+python scripts/trace_heart.py
+```
+
+`src/sections.js` holds each section's name, list price and color. Section ids are the keys stored in the database.
