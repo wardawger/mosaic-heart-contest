@@ -2,6 +2,12 @@
   command = "npm run build"
   publish = "dist"
 
+# Each team heart: /h/<link-name>
+[[redirects]]
+  from = "/h/*"
+  to = "/heart.html"
+  status = 200
+
 [[redirects]]
   from = "/admin"
   to = "/admin.html"

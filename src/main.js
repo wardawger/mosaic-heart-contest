@@ -2,7 +2,9 @@ import './style.css';
 import { SECTIONS, byId } from './sections.js';
 import { createHeart } from './heart.js';
 import { startBackground } from './background.js';
-import { configured, demo, fetchDonations, subscribeDonations, donorName, money } from './data.js';
+import {
+  configured, demo, currentSlug, fetchHeart, fetchDonations, subscribeDonations, donorName, money, DEFAULT_DONATE_URL,
+} from './data.js';
 
 const $ = (s) => document.querySelector(s);
 const tip = $('#tip');
@@ -112,19 +114,47 @@ $('#replay').addEventListener('click', () => {
   ids.forEach((id, i) => heart.peel(id, 0.3 + i * 0.28));
 });
 
+function notice(text, link) {
+  const n = $('#notice');
+  n.replaceChildren(text);
+  if (link) {
+    const a = document.createElement('a');
+    a.href = link.href;
+    a.textContent = link.text;
+    n.append(' ', a);
+  }
+  n.hidden = false;
+}
+
+// Show this team's name and send donations and admin links to this team.
+function showHeart(h) {
+  $('#team-name').textContent = h.name;
+  document.title = `${h.name} · Mosaic Heart`;
+  const donate = $('#donate');
+  donate.href = h.donate_url || DEFAULT_DONATE_URL;
+  if (h.donate_url) {
+    $('#donate-title').textContent = `Give to ${h.name}`;
+    $('#donate-sub').textContent = 'Every gift fills in a piece of this heart';
+  }
+  for (const a of document.querySelectorAll('.admin-link')) a.href = `/admin?heart=${encodeURIComponent(h.slug)}`;
+}
+
 (async () => {
   renderStats();
   if (!configured && !demo) {
-    const n = $('#notice');
-    n.textContent = 'Supabase is not configured yet, so no donations can be shown. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.';
-    n.hidden = false;
+    return notice('Supabase is not configured yet, so no hearts can be shown. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
   }
-  try { apply(await fetchDonations()); } catch (e) {
+  const slug = currentSlug();
+  if (!slug && !demo) return notice('No team heart chosen.', { href: '/', text: 'See all team hearts' });
+  try {
+    const h = await fetchHeart(slug);
+    if (!h) return notice(`There's no team heart at this link.`, { href: '/', text: 'See all team hearts' });
+    showHeart(h);
+    apply(await fetchDonations(h.id));
+    subscribeDonations(h.id, (data) => apply(data));
+  } catch (e) {
     console.error(e);
-    const n = $('#notice');
-    n.textContent = 'Could not load donations right now. Please refresh in a moment.';
-    n.hidden = false;
+    notice('Could not load this heart right now. Please refresh in a moment.');
   }
-  subscribeDonations((data) => apply(data));
 })();
 document.addEventListener('pointerdown', (e) => { if (!e.target.closest('canvas, .tip, .list li')) showTip(null); });
