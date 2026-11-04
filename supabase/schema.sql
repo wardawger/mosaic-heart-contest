@@ -74,6 +74,8 @@ end $$;
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 create table if not exists private.settings (key text primary key, value text not null);
+-- no policies on purpose: only the database owner (and create_heart, which runs as it) can read it
+alter table private.settings enable row level security;
 insert into private.settings (key, value) values ('access_code', 'change-me') on conflict (key) do nothing;
 
 -- Teams create hearts only through this function, which checks the code.
