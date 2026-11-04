@@ -4,6 +4,7 @@
   --bg: #a4a7ae; --bg-hi: #c1c4c9; --bg-lo: #858991; --fg: #1a1a22; --muted: #3d3b44; --card: #ffffff; --line: #dcdde2; --accent: #e0377a; --anim-base: #6e6e6e;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body {
   margin: 0; min-height: 100vh; display: flex; flex-direction: column;
   background: var(--bg-lo) radial-gradient(1200px 800px at 40% 35%, var(--bg-hi) 0%, var(--bg) 45%, var(--bg-lo) 100%) fixed;
@@ -182,43 +183,63 @@ input[type=text], input[type=email], input[type=password], input[type=number], t
 .btn { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font: inherit; font-weight: 600; cursor: pointer; margin-top: 16px; }
 .btn.alt { background: none; color: var(--fg); border: 1px solid var(--line); }
 .btn.danger { background: #c0392b; }
-.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
-/* Section picker: each option lifts and takes on its section color on hover,
-   and stays tinted while checked. Options without a section color (donor
-   type) use the accent. */
-.pick {
-  --pc: var(--c, var(--accent));
-  display: flex; gap: 8px; align-items: center; padding: 6px 8px; margin: 0;
-  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
-  font-weight: 400; cursor: pointer;
+/* Choice cards (shadcn Field-as-card layout): the whole card is the label,
+   a checkbox or radio sits beside a title and a muted description. Section
+   cards are tinted with their section color, more strongly when checked. */
+.picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.choice-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+label.choice {
+  --pc: var(--accent);
+  --pc-ink: #fff;
+  display: block; margin: 0; font-size: .875rem; font-weight: 400; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--pc) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--pc) 10%, var(--card));
   transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
 }
-.pick input { accent-color: var(--pc); cursor: inherit; }
-.pick .sw {
-  width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none;
-  transition: transform .2s ease, box-shadow .2s ease;
-}
-.pick:not(.taken):hover {
+.choice-group label.choice { background: var(--card); border-color: var(--line); }
+.choice-field { display: flex; align-items: flex-start; gap: 12px; padding: 16px; }
+.choice-content { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.choice-title { font-weight: 500; line-height: 1.25; color: var(--fg); }
+.choice-desc { color: var(--muted); line-height: 1.4; }
+label.choice:not(.taken):hover {
   transform: translateY(-2px);
   border-color: var(--pc);
-  background: color-mix(in srgb, var(--pc) 8%, var(--card));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--pc) 28%, transparent);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--pc) 25%, transparent);
 }
-.pick:not(.taken):hover .sw { transform: scale(1.35); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pc) 22%, transparent); }
-.pick:not(.taken):active { transform: translateY(0) scale(.98); box-shadow: 0 2px 6px color-mix(in srgb, var(--pc) 22%, transparent); }
-.pick:has(input:checked) {
+label.choice:not(.taken):active { transform: translateY(0) scale(.99); }
+label.choice:has(input:checked) {
   border-color: var(--pc);
-  background: color-mix(in srgb, var(--pc) 14%, var(--card));
-  font-weight: 600;
+  background: color-mix(in srgb, var(--pc) 24%, var(--card));
 }
-.pick:has(input:checked) .sw { animation: pick-pop .35s ease; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 30%, transparent); }
-.pick:has(input:focus-visible) { outline: 2px solid var(--pc); outline-offset: 2px; }
-.pick.taken { opacity: .5; cursor: not-allowed; }
-@keyframes pick-pop { 0% { transform: scale(1); } 45% { transform: scale(1.6); } 100% { transform: scale(1); } }
+.choice-group label.choice:has(input:checked) { background: color-mix(in srgb, var(--pc) 6%, var(--card)); }
+label.choice.taken { opacity: .55; cursor: not-allowed; }
+
+/* checkbox: 16px rounded square, fills with the section color when checked */
+.ui-check, .ui-radio {
+  appearance: none; -webkit-appearance: none; flex: none; margin: 1px 0 0;
+  width: 16px; height: 16px; display: grid; place-content: center;
+  background: #fff; border: 1px solid #c4c6cc; box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+  cursor: inherit; transition: background-color .15s, border-color .15s, box-shadow .15s;
+}
+.ui-check { border-radius: 4px; }
+.ui-check::before {
+  content: ""; width: 12px; height: 12px; background: var(--pc-ink);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  transform: scale(0); transition: transform .15s ease;
+}
+.ui-check:checked { background: var(--pc); border-color: var(--pc); }
+.ui-check:checked::before { transform: scale(1); }
+/* radio: 16px circle with a filled dot when chosen */
+.ui-radio { border-radius: 50%; }
+.ui-radio::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--pc); transform: scale(0); transition: transform .15s ease; }
+.ui-radio:checked { border-color: var(--pc); }
+.ui-radio:checked::before { transform: scale(1); }
+.ui-check:focus-visible, .ui-radio:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--pc) 45%, transparent); }
+.ui-check:disabled { opacity: .6; }
 @media (prefers-reduced-motion: reduce) {
-  .pick, .pick .sw { transition: none; }
-  .pick:not(.taken):hover, .pick:not(.taken):active, .pick:not(.taken):hover .sw { transform: none; }
-  .pick:has(input:checked) .sw { animation: none; }
+  label.choice, .ui-check, .ui-radio, .ui-check::before, .ui-radio::before { transition: none; }
+  label.choice:not(.taken):hover, label.choice:not(.taken):active { transform: none; }
 }
 .msg { margin-top: 12px; min-height: 1.4em; }
 .msg.err { color: #c0392b; } .msg.ok { color: #1e8e3e; }

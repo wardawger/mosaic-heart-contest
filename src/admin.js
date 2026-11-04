@@ -56,8 +56,8 @@ async function renderDashboard() {
   // --- form controls ---
   const picks = el('div', { className: 'picks' });
   const checks = new Map();
-  const typePerson = el('input', { type: 'radio', name: 'dt', value: 'person', checked: true });
-  const typeOrg = el('input', { type: 'radio', name: 'dt', value: 'organization' });
+  const typePerson = el('input', { type: 'radio', className: 'ui-radio', name: 'dt', value: 'person', id: 'dt-person', checked: true });
+  const typeOrg = el('input', { type: 'radio', className: 'ui-radio', name: 'dt', value: 'organization', id: 'dt-org' });
   const first = el('input', { type: 'text' });
   const last = el('input', { type: 'text' });
   const org = el('input', { type: 'text' });
@@ -69,12 +69,26 @@ async function renderDashboard() {
   const submit = el('button', { className: 'btn', type: 'submit' }, 'Reveal section(s)');
   const cancel = el('button', { className: 'btn alt', type: 'button', hidden: true }, 'Cancel edit');
 
+  // Choice cards (shadcn "toggle-checkbox-2" / "choice card" layout): the whole
+  // card is the label. Section cards are tinted with the section's color.
+  const choiceCard = (input, title, desc, controlFirst) => {
+    const content = el('span', { className: 'choice-content' }, el('span', { className: 'choice-title' }, title), desc);
+    const field = el('span', { className: 'choice-field' }, ...(controlFirst ? [input, content] : [content, input]));
+    return el('label', { className: 'choice', htmlFor: input.id }, field);
+  };
+  // dark check mark on light section colors (yellow, peach), white on the rest
+  const inkFor = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.6 ? '#1a1a22' : '#ffffff';
+  };
   for (const s of SECTIONS) {
-    const cb = el('input', { type: 'checkbox', value: s.id });
-    const lab = el('label', { className: 'pick' }, cb, el('i', { className: 'sw' }), `${s.name} — ${money(s.price)}`);
-    lab.style.setProperty('--c', s.color);
+    const cb = el('input', { type: 'checkbox', className: 'ui-check', value: s.id, id: `pick-${s.id}` });
+    const desc = el('span', { className: 'choice-desc' });
+    const lab = choiceCard(cb, s.name, desc, true);
+    lab.style.setProperty('--pc', s.color);
+    lab.style.setProperty('--pc-ink', inkFor(s.color));
     cb.addEventListener('change', syncHint);
-    checks.set(s.id, { cb, lab });
+    checks.set(s.id, { cb, lab, desc });
     picks.append(lab);
   }
   function selectedIds() { return [...checks].filter(([, v]) => v.cb.checked).map(([id]) => id); }
@@ -94,10 +108,13 @@ async function renderDashboard() {
   syncType();
 
   function refreshPicks() {
-    for (const [id, { cb, lab }] of checks) {
+    for (const [id, { cb, lab, desc }] of checks) {
       const taken = rows.has(id) && editing !== id;
       cb.disabled = taken;
       lab.classList.toggle('taken', taken);
+      desc.textContent = rows.has(id)
+        ? `${editing === id ? 'Editing' : 'Revealed'} · ${donorName(rows.get(id))}`
+        : `${money(byId[id].price)} · Available`;
     }
   }
   function reset() {
@@ -114,6 +131,7 @@ async function renderDashboard() {
     reset();
     editing = id;
     checks.get(id).cb.checked = true;
+    refreshPicks();
     for (const [k, v] of checks) if (k !== id) v.cb.disabled = true;
     (r.donor_type === 'organization' ? typeOrg : typePerson).checked = true; syncType();
     first.value = r.first_name || ''; last.value = r.last_name || ''; org.value = r.org_name || '';
@@ -128,7 +146,9 @@ async function renderDashboard() {
     el('h2', {}, 'Reveal part of the heart'),
     el('label', {}, 'Section(s) to reveal'), picks,
     el('label', {}, 'Donor'),
-    el('div', {}, el('label', { className: 'pick' }, typePerson, 'Individual'), el('label', { className: 'pick' }, typeOrg, 'Organization')),
+    el('div', { className: 'choice-group', role: 'radiogroup', ariaLabel: 'Donor type' },
+      choiceCard(typePerson, 'Individual', el('span', { className: 'choice-desc' }, 'A person, shown by first and last name.'), false),
+      choiceCard(typeOrg, 'Organization', el('span', { className: 'choice-desc' }, 'A business, club or group, shown by its name.'), false)),
     personRow, orgRow,
     el('label', {}, 'Amount (USD)'), amount, amountHint,
     el('label', {}, 'Personalized message'), message,
