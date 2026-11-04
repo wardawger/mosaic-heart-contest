@@ -40,7 +40,7 @@ body {
 .sub { margin: 2px 0 0; color: var(--muted); }
 .layout { flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 8px 16px 16px; min-height: 0; }
 .stage { position: relative; min-height: 70vh; border-radius: 18px; overflow: hidden; touch-action: pan-y; }
-.stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.stage canvas { display: block; width: 100%; height: 100%; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; align-self: start; }
 .top { position: relative; }
 .race-logo { position: absolute; left: 16px; top: 12px; display: block; width: 84px; border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
