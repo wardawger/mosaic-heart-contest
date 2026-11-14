@@ -14,6 +14,22 @@ const el = (tag, props = {}, ...kids) => {
 
 let user = null;
 
+// A password-reset email link lands here with a recovery token in the URL
+// (#...type=recovery). Supabase signs the person in from it and then fires
+// PASSWORD_RECOVERY; either way they set a new password before anything else.
+// An expired or already-used link comes back with an error in the URL instead.
+const hashParams = new URLSearchParams(location.hash.slice(1));
+let recovering = hashParams.get('type') === 'recovery';
+let linkError = hashParams.get('error_description');
+if (supabase) {
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event !== 'PASSWORD_RECOVERY') return;
+    recovering = true;
+    user = session?.user ?? user;
+    route();
+  });
+}
+
 function say(node, text, kind) { node.textContent = text; node.className = 'msg ' + (kind || ''); }
 
 function showProblem(text, back = false) {
@@ -45,6 +61,7 @@ async function start() {
 async function route() {
   try {
     if (!user) return renderAuth();
+    if (recovering) return renderNewPassword();
     const params = new URLSearchParams(location.search);
     if (params.get('heart')) await renderHeartAdmin(params.get('heart').toLowerCase());
     else await renderHome({ focusNew: params.has('new') });
@@ -77,8 +94,14 @@ function renderAuth() {
     const msg = el('div', { className: 'msg' });
     const email = el('input', { type: 'email', id: 'si-email', required: true, autocomplete: 'username' });
     const pass = el('input', { type: 'password', id: 'si-pass', required: true, autocomplete: 'current-password' });
+    const forgot = el('button', { className: 'link-btn', type: 'button' }, 'Forgot password?');
+    forgot.addEventListener('click', () => show('reset'));
     const f = el('form', {}, field('Email', email), field('Password', pass),
-      el('button', { className: 'btn', type: 'submit' }, 'Sign in'), msg);
+      el('button', { className: 'btn', type: 'submit' }, 'Sign in'), msg, el('div', { className: 'auth-links' }, forgot));
+    if (linkError) {
+      say(msg, 'That link has expired or was already used. Use “Forgot password?” to get a new one.', 'err');
+      linkError = null;
+    }
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       say(msg, 'Signing in…');
@@ -104,7 +127,8 @@ function renderAuth() {
       const { data, error } = await supabase.auth.signUp({
         email: email.value.trim(),
         password: pass.value,
-        options: { emailRedirectTo: `${location.origin}${location.pathname}${location.search}` },
+        // must match a Redirect URL allowed in Supabase (Authentication > URL Configuration)
+        options: { emailRedirectTo: `${location.origin}/admin` },
       });
       if (error) return say(msg, 'Could not create the account: ' + error.message, 'err');
       if (data.session) {
@@ -115,10 +139,33 @@ function renderAuth() {
     });
     forms.signup = f;
   }
+  // forgot password: email a reset link that comes back to this page
+  {
+    const msg = el('div', { className: 'msg' });
+    const email = el('input', { type: 'email', id: 'rp-email', required: true, autocomplete: 'username' });
+    const back = el('button', { className: 'link-btn', type: 'button' }, '← Back to sign in');
+    back.addEventListener('click', () => show('signin'));
+    const f = el('form', {},
+      el('h2', {}, 'Reset your password'),
+      el('p', { className: 'hint' }, 'Enter the email you signed up with and we’ll send you a link to choose a new password.'),
+      field('Email', email),
+      el('button', { className: 'btn', type: 'submit' }, 'Send reset link'), msg, el('div', { className: 'auth-links' }, back));
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      say(msg, 'Sending…');
+      const { error } = await supabase.auth.resetPasswordForEmail(email.value.trim(), {
+        redirectTo: `${location.origin}/admin`,
+      });
+      if (error) return say(msg, 'Could not send the link: ' + error.message, 'err');
+      say(msg, `If ${email.value.trim()} has an account, a reset link is on its way. It can take a few minutes; check spam too.`, 'ok');
+    });
+    forms.reset = f;
+  }
 
   const show = (which) => {
     for (const [k, f] of Object.entries(forms)) f.hidden = k !== which;
     for (const t of tabs.children) t.setAttribute('aria-selected', String(t.dataset.tab === which));
+    tabs.hidden = which === 'reset';
   };
   for (const [k, label] of [['signin', 'Sign in'], ['signup', 'Create account']]) {
     const t = el('button', { className: 'tab', type: 'button', role: 'tab' }, label);
@@ -126,9 +173,34 @@ function renderAuth() {
     t.addEventListener('click', () => show(k));
     tabs.append(t);
   }
-  card.append(forms.signin, forms.signup);
+  card.append(forms.signin, forms.signup, forms.reset);
   show(wantsNew ? 'signup' : 'signin');
   app.replaceChildren(card);
+}
+
+// ---- choose a new password (after following a reset link) ----
+function renderNewPassword() {
+  const msg = el('div', { className: 'msg' });
+  const pass = el('input', { type: 'password', id: 'np-pass', required: true, minLength: 8, autocomplete: 'new-password' });
+  const again = el('input', { type: 'password', id: 'np-again', required: true, minLength: 8, autocomplete: 'new-password' });
+  const field = (label, input) => el('div', {}, el('label', { htmlFor: input.id }, label), input);
+  const f = el('form', { className: 'card auth-card' },
+    el('h2', {}, 'Set a new password'),
+    el('p', { className: 'hint' }, `For ${user.email}.`),
+    field('New password (at least 8 characters)', pass), field('New password again', again),
+    el('button', { className: 'btn', type: 'submit' }, 'Save new password'), msg);
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (pass.value !== again.value) return say(msg, 'The two passwords don’t match.', 'err');
+    say(msg, 'Saving…');
+    const { error } = await supabase.auth.updateUser({ password: pass.value });
+    if (error) return say(msg, 'Could not save the password: ' + error.message, 'err');
+    recovering = false;
+    say(msg, 'Password saved. Taking you to your hearts…', 'ok');
+    setTimeout(() => go(''), 1200);
+  });
+  app.replaceChildren(f);
+  pass.focus();
 }
 
 // ---- share link: the URL, a copy button and a view link ----
