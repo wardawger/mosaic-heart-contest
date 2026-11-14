@@ -141,6 +141,20 @@ footer a { color: var(--muted); }
 
 /* ---- leaderboard (home page) ---- */
 .board-wrap { width: 100%; max-width: 860px; margin: 0 auto; padding: 20px 16px 8px; display: grid; gap: 14px; }
+.intro { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; }
+.intro h2 { margin: 0 0 6px; font-family: "Geist", system-ui, sans-serif; font-size: 1.35rem; letter-spacing: -0.02em; text-wrap: balance; }
+.intro-lead { margin: 0 0 16px; color: var(--muted); max-width: 65ch; }
+.intro-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; counter-reset: step; }
+.intro-steps li { counter-increment: step; display: grid; grid-template-columns: 32px 1fr; gap: 10px; align-items: start; font-size: .95rem; line-height: 1.45; min-width: 0; }
+.intro-steps li::before {
+  content: counter(step); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%;
+  font-family: "Geist", system-ui, sans-serif; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, #7536EC, #F01579);
+}
+.intro-steps b { display: block; }
+.intro-foot { margin: 16px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: .92rem; color: var(--muted); }
+.intro-foot a { color: var(--accent); font-weight: 600; text-underline-offset: 2px; }
+@media (max-width: 720px) { .intro-steps { grid-template-columns: 1fr; gap: 12px; } .intro { padding: 16px; } }
 .board-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .board-total { margin: 0; font-weight: 600; color: #24232a; }
 .board { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
